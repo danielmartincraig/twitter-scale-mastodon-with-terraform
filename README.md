@@ -52,7 +52,7 @@ If you look at [MastodonApiApplication](api/src/main/java/com/rpl/mastodonapi/Ma
 To run the frontend, you'll need to run [our fork of Soapbox](https://github.com/redplanetlabs/soapbox). Our fork contains minor tweaks to the official implementation to fix a variety of small issues. From the root of that fork run:
 
 ```
-npx webpack init
+yarn install --frozen-lockfile
 NODE_ENV="development" BACKEND_URL="http://localhost:8080" yarn build
 NODE_ENV="development" BACKEND_URL="http://localhost:8080" yarn dev --port 8000
 ```

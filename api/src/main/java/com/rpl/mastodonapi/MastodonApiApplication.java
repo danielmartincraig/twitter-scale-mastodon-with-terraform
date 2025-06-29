@@ -62,23 +62,23 @@ public class MastodonApiApplication {
 
         Relationships relationshipsModule = new Relationships();
         String relationshipsModuleName = Relationships.class.getName();
-        ipc.launchModule(relationshipsModule, new LaunchConfig(2, 1));
+        ipc.launchModule(relationshipsModule, new LaunchConfig(1, 1));
 
         Core coreModule = new Core();
         String coreModuleName = Core.class.getName();
-        ipc.launchModule(coreModule, new LaunchConfig(2, 1));
+        ipc.launchModule(coreModule, new LaunchConfig(1, 1));
 
         TrendsAndHashtags hashtagsModule = new TrendsAndHashtags();
-        ipc.launchModule(hashtagsModule, new LaunchConfig(2, 1));
+        ipc.launchModule(hashtagsModule, new LaunchConfig(1, 1));
 
         GlobalTimelines globalTimelinesModule = new GlobalTimelines();
-        ipc.launchModule(globalTimelinesModule, new LaunchConfig(2, 1));
+        ipc.launchModule(globalTimelinesModule, new LaunchConfig(1, 1));
 
         Notifications notificationsModule = new Notifications();
-        ipc.launchModule(notificationsModule, new LaunchConfig(2, 1));
+        ipc.launchModule(notificationsModule, new LaunchConfig(1, 1));
 
         Search searchModule = new Search();
-        ipc.launchModule(searchModule, new LaunchConfig(2, 1));
+        ipc.launchModule(searchModule, new LaunchConfig(1, 1));
 
         MastodonApiController.manager = new MastodonApiManager(ipc);
 
@@ -95,7 +95,7 @@ public class MastodonApiApplication {
 
         List<Long> fooIds = new ArrayList<>();
         PState nameToUser = ipc.clusterPState(coreModuleName, "$$nameToUser");
-        for (int i = 0; i < 50; i++) {
+        for (int i = 0; i < 10; i++) {
             MastodonWebHelpers.SigningKeyPair keys = MastodonWebHelpers.generateKeys();
             accountDepot.append(new Account("foo" + i, "foo" + i + "@foo.com", MastodonApiHelpers.encodePassword("charlie"), "en-US", UUID.randomUUID().toString(), keys.publicKey, AccountContent.local(new LocalAccount(keys.privateKey)), ts+=1).setDiscoverable(true).setDisplayName("Foo " + i));
             long fooId = nameToUser.selectOne(Path.key("foo" + i, "accountId"));
@@ -124,7 +124,7 @@ public class MastodonApiApplication {
         }
 
         Depot statusDepot = ipc.clusterDepot(Core.class.getName(), "*statusDepot");
-        for (int i = 0; i < 50; i++) {
+        for (int i = 0; i < 10; i++) {
             ts += weekMillis / 50;
             statusDepot.append(new AddStatus(UUID.randomUUID().toString(), new Status(aliceId, StatusContent.normal(new NormalStatusContent(i + " Hello, world!", StatusVisibility.Public)), ts)));
             statusDepot.append(new AddStatus(UUID.randomUUID().toString(), new Status(bobId, StatusContent.normal(new NormalStatusContent(i + " #vanlife https://github.com", StatusVisibility.Public)), ts)));

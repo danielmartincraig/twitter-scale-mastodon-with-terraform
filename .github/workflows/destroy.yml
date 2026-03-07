@@ -1,0 +1,80 @@
+name: Destroy Infrastructure
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target environment (staging/production)'
+        required: true
+        type: choice
+        options:
+          - staging
+          - production
+      confirm_destroy:
+        description: 'Type "destroy" to confirm infrastructure destruction'
+        required: true
+        type: string
+
+env:
+  AWS_REGION: ${{ secrets.AWS_DEFAULT_REGION || 'us-east-1' }}
+  TF_VERSION: '1.5.0'
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  destroy:
+    name: Destroy Infrastructure
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    if: github.event.inputs.confirm_destroy == 'destroy'
+    environment: ${{ github.event.inputs.environment }}
+    env:
+      TF_CLOUD_TOKEN: ${{ secrets.TF_CLOUD_TOKEN }}
+      TF_CLOUD_ORGANIZATION: ${{ secrets.TF_CLOUD_ORGANIZATION }}
+      TF_WORKSPACE: ${{ secrets.TF_CLOUD_WORKSPACE }}
+      TF_VAR_git_sha: ${{ github.sha }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          cli_config_credentials_token: ${{ secrets.TF_CLOUD_TOKEN }}
+          terraform_wrapper: false
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ secrets.DEPLOYER_ROLE }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Confirm destruction
+        run: |
+          echo "========================================="
+          echo "WARNING: Infrastructure Destruction"
+          echo "========================================="
+          echo "Environment: ${{ github.event.inputs.environment }}"
+          echo "This will destroy all infrastructure resources."
+          echo "This action cannot be undone."
+          echo "========================================="
+
+      - name: Terraform Init
+        working-directory: terraform
+        run: |
+          echo "[$(date -u +"%Y-%m-%dT%H:%M:%SZ")] Initializing Terraform"
+          terraform init
+          echo "[$(date -u +"%Y-%m-%dT%H:%M:%SZ")] Terraform initialization completed"
+
+      - name: Terraform Destroy
+        working-directory: terraform
+        env:
+          TF_VAR_ssh_key_name: ${{ secrets.TF_SSH_KEY_NAME }}
+          TF_VAR_deploy_bucket: ${{ secrets.DEPLOY_BUCKET }}
+        run: |
+          echo "[$(date -u +"%Y-%m-%dT%H:%M:%SZ")] Destroying infrastructure"
+          terraform apply -destroy -auto-approve -var-file="environments/${{ github.event.inputs.environment }}.tfvars"
+          echo "[$(date -u +"%Y-%m-%dT%H:%M:%SZ")] Infrastructure destruction completed"

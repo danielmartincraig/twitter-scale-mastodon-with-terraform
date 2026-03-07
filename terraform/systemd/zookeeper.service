@@ -1,0 +1,18 @@
+[Unit]
+Description=Apache Zookeeper
+After=network.target
+
+[Service]
+Type=forking
+User=root
+Group=root
+Environment="JAVA_HOME=/usr/lib/jvm/java-1.8.0-amazon-corretto"
+Environment="ZOO_LOG_DIR=/var/log/zookeeper"
+ExecStart=/opt/zookeeper/bin/zkServer.sh start
+ExecStop=/opt/zookeeper/bin/zkServer.sh stop
+ExecReload=/opt/zookeeper/bin/zkServer.sh restart
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

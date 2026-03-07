@@ -1,0 +1,14 @@
+# Rama Conductor configuration
+# https://redplanetlabs.com/docs/~/operating-rama.html#_setting_up_a_rama_cluster
+#
+# Zookeeper is co-located on this instance; port must match zoo.cfg clientPort.
+zookeeper.servers:
+  - "127.0.0.1"
+zookeeper.port: 2181
+
+# Single-node cluster — Conductor, Supervisor, and Zookeeper all on the same
+# instance, so localhost is sufficient for all inter-daemon communication.
+conductor.host: "127.0.0.1"
+
+# Local directory for Conductor state (module jars, cluster metadata).
+local.dir: "/data/rama"

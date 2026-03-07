@@ -1,0 +1,34 @@
+[Unit]
+Description=Rama Supervisor
+Documentation=https://redplanetlabs.com/docs/~/operating-rama.html
+# Supervisor requires Zookeeper to be available before starting
+After=network.target zookeeper.service rama-conductor.service
+Requires=rama-conductor.service
+
+[Service]
+Type=simple
+User=root
+Group=root
+
+# Java must be on PATH; Rama also requires Python 3 (pre-installed on AL2023)
+Environment="JAVA_HOME=/usr/lib/jvm/java-1.8.0-amazon-corretto"
+Environment="PATH=/usr/lib/jvm/java-1.8.0-amazon-corretto/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+
+# Rama resolves rama.yaml and writes logs/ relative to its working directory
+WorkingDirectory=/opt/rama
+
+# ./rama supervisor launches the Supervisor daemon in the foreground
+ExecStart=/opt/rama/rama supervisor
+
+# Redirect stdout/stderr into the Rama logs directory so they are captured
+# alongside the log4j2 output that Rama writes there itself
+StandardOutput=append:/opt/rama/logs/supervisor-stdout.log
+StandardError=append:/opt/rama/logs/supervisor-stderr.log
+
+Restart=on-failure
+RestartSec=15
+# Give the JVM time to start before systemd considers it failed
+TimeoutStartSec=120
+
+[Install]
+WantedBy=multi-user.target

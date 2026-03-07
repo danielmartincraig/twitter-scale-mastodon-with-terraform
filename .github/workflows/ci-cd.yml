@@ -1,0 +1,316 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches:
+      - '**'
+    tags:
+      - 'v*.*.*'
+      - 'release-*'
+  pull_request:
+    branches:
+      - '**'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target environment (staging/production)'
+        required: true
+        type: choice
+        options:
+          - staging
+          - production
+      artifact_version:
+        description: 'Artifact version (commit SHA) for deployment or rollback'
+        required: false
+        type: string
+
+
+env:
+  JAVA_VERSION: '8'
+  MAVEN_VERSION: '3.8'
+  AWS_REGION: ${{ secrets.AWS_DEFAULT_REGION || 'us-east-1' }}
+  TF_VERSION: '1.5.0'
+
+permissions:
+  id-token: write
+  contents: read
+  
+jobs:
+
+  build:
+    name: Build Maven Projects
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.environment || (startsWith(github.ref, 'refs/tags/') && 'production' || 'staging') }}
+    env:
+      SECRET_DEPLOYER_ROLE: ${{ secrets.DEPLOYER_ROLE }}
+      TF_CLOUD_TOKEN: ${{ secrets.TF_CLOUD_TOKEN }}
+      TF_CLOUD_ORGANIZATION: ${{ secrets.TF_CLOUD_ORGANIZATION }}
+      TF_WORKSPACE: ${{ secrets.TF_CLOUD_WORKSPACE }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      - name: Set up Java
+        uses: actions/setup-java@v3
+        with:
+          distribution: 'corretto'
+          java-version: ${{ env.JAVA_VERSION }}
+      
+      - name: Cache Maven dependencies
+        uses: actions/cache@v3
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-maven-
+      
+      - name: Build Backend Module
+        run: |
+          echo "[$(date -u +"%Y-%m-%dT%H:%M:%SZ")] Starting backend build"
+          cd backend
+          mvn clean compile
+          echo "[$(date -u +"%Y-%m-%dT%H:%M:%SZ")] Backend build completed"
+      
+      - name: Build API Module
+        run: |
+          echo "[$(date -u +"%Y-%m-%dT%H:%M:%SZ")] Starting API build"
+          cd api
+          mvn clean compile
+          echo "[$(date -u +"%Y-%m-%dT%H:%M:%SZ")] API build completed"
+
+  test:
+    name: Test Maven Projects
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: build
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      - name: Set up Java
+        uses: actions/setup-java@v3
+        with:
+          distribution: 'temurin'
+          java-version: ${{ env.JAVA_VERSION }}
+      
+      - name: Cache Maven dependencies
+        uses: actions/cache@v3
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-maven-
+      
+      - name: Test Backend Module
+        run: |
+          echo "[$(date -u +"%Y-%m-%dT%H:%M:%SZ")] Starting backend tests"
+          cd backend
+          mvn test
+          echo "[$(date -u +"%Y-%m-%dT%H:%M:%SZ")] Backend tests completed"
+      
+      - name: Upload Backend Test Reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-test-reports-${{ github.sha }}
+          path: backend/target/surefire-reports/*.xml
+          retention-days: 7
+          if-no-files-found: warn
+      
+      - name: Test API Module
+        run: |
+          echo "[$(date -u +"%Y-%m-%dT%H:%M:%SZ")] Starting API tests"
+          cd api
+          mvn test -Dtest=EndToEndTest
+          echo "[$(date -u +"%Y-%m-%dT%H:%M:%SZ")] API tests completed"
+      
+      - name: Upload API Test Reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: api-test-reports-${{ github.sha }}
+          path: api/target/surefire-reports/*.xml
+          retention-days: 7
+          if-no-files-found: warn
+
+  package:
+    name: Package Artifacts
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: test
+    environment: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.environment || (startsWith(github.ref, 'refs/tags/') && 'production' || 'staging') }}
+    env:
+      SECRET_DEPLOYER_ROLE: ${{ secrets.DEPLOYER_ROLE }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      - name: Set up Java
+        uses: actions/setup-java@v3
+        with:
+          distribution: 'corretto'
+          java-version: ${{ env.JAVA_VERSION }}
+      
+      - name: Cache Maven dependencies
+        uses: actions/cache@v3
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-maven-
+      
+      - name: Package Backend Module
+        run: |
+          echo "[$(date -u +"%Y-%m-%dT%H:%M:%SZ")] Starting backend packaging"
+          cd backend
+          mvn package -Dmaven.test.skip=true
+          echo "[$(date -u +"%Y-%m-%dT%H:%M:%SZ")] Backend packaging completed"
+      
+      - name: Package API Module
+        run: |
+          echo "[$(date -u +"%Y-%m-%dT%H:%M:%SZ")] Starting API packaging"
+          cd api
+          mvn package -Dmaven.test.skip=true
+          echo "[$(date -u +"%Y-%m-%dT%H:%M:%SZ")] API packaging completed"
+      
+      - name: Upload Backend Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: mastodon-backend-${{ github.sha }}
+          path: backend/target/mastodon-jar-with-dependencies.jar
+          retention-days: 30
+          if-no-files-found: error
+      
+      - name: Upload API Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: mastodon-api-${{ github.sha }}
+          path: api/target/mastodonapi-*.jar
+          retention-days: 30
+          if-no-files-found: error
+      
+      - name: Create artifact metadata
+        run: |
+          mkdir -p artifacts
+          cat > artifacts/metadata.json << EOF
+          {
+            "commit_sha": "${{ github.sha }}",
+            "branch": "${{ github.ref_name }}",
+            "timestamp": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")",
+            "backend_artifact": "mastodon-backend-${{ github.sha }}",
+            "api_artifact": "mastodon-api-${{ github.sha }}"
+          }
+          EOF
+          cat artifacts/metadata.json
+      
+      - name: Upload Artifact Metadata
+        uses: actions/upload-artifact@v4
+        with:
+          name: artifact-metadata-${{ github.sha }}
+          path: artifacts/metadata.json
+          retention-days: 30
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ secrets.DEPLOYER_ROLE }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Upload JARs to S3
+        run: |
+          aws s3 cp backend/target/mastodon-jar-with-dependencies.jar \
+            s3://${{ secrets.DEPLOY_BUCKET }}/jars/backend/${{ github.sha }}/mastodon-jar-with-dependencies.jar
+          aws s3 cp api/target/mastodonapi-*.jar \
+            s3://${{ secrets.DEPLOY_BUCKET }}/jars/api/${{ github.sha }}/mastodonapi.jar
+
+  deploy:
+    name: Deploy to AWS
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    needs: package
+    environment: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.environment || (startsWith(github.ref, 'refs/tags/') && 'production' || 'staging') }}
+    env:
+      SECRET_DEPLOYER_ROLE: ${{ secrets.DEPLOYER_ROLE }}
+      TF_CLOUD_TOKEN: ${{ secrets.TF_CLOUD_TOKEN }}
+      TF_CLOUD_ORGANIZATION: ${{ secrets.TF_CLOUD_ORGANIZATION }}
+      TF_WORKSPACE: ${{ secrets.TF_CLOUD_WORKSPACE }}
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      github.ref == 'refs/heads/master' ||
+      startsWith(github.ref, 'refs/tags/v') ||
+      startsWith(github.ref, 'refs/tags/release-')
+    
+    concurrency:
+      group: deploy-${{ github.event_name == 'workflow_dispatch' && github.event.inputs.environment || (startsWith(github.ref, 'refs/tags/') && 'production' || 'staging') }}
+      cancel-in-progress: false
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          cli_config_credentials_token: ${{ secrets.TF_CLOUD_TOKEN }}
+          terraform_wrapper: false
+      
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ secrets.DEPLOYER_ROLE }}
+          aws-region: ${{ env.AWS_REGION }}
+      
+      - name: Determine environment
+        id: env
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            echo "environment=${{ github.event.inputs.environment }}" >> $GITHUB_OUTPUT
+          elif [[ "${{ github.ref }}" == refs/tags/v* ]] || [[ "${{ github.ref }}" == refs/tags/release-* ]]; then
+            echo "environment=production" >> $GITHUB_OUTPUT
+          else
+            echo "environment=staging" >> $GITHUB_OUTPUT
+          fi
+          
+          echo "Deploying to environment: $(cat $GITHUB_OUTPUT | grep environment | cut -d'=' -f2)"
+      
+      - name: Terraform Init
+        working-directory: terraform
+        run: |
+          echo "[$(date -u +"%Y-%m-%dT%H:%M:%SZ")] Initializing Terraform"
+          terraform init
+          echo "[$(date -u +"%Y-%m-%dT%H:%M:%SZ")] Terraform initialization completed"
+      
+      - name: Terraform Validate
+        working-directory: terraform
+        run: |
+          echo "[$(date -u +"%Y-%m-%dT%H:%M:%SZ")] Validating Terraform configuration"
+          terraform validate
+          echo "[$(date -u +"%Y-%m-%dT%H:%M:%SZ")] Terraform validation completed"
+      
+      - name: Terraform Plan
+        working-directory: terraform
+        env:
+          TF_VAR_ssh_key_name: ${{ secrets.TF_SSH_KEY_NAME }}
+          TF_VAR_deploy_bucket: ${{ secrets.DEPLOY_BUCKET }}
+          TF_VAR_git_sha: ${{ github.sha }}
+        run: |
+          echo "[$(date -u +"%Y-%m-%dT%H:%M:%SZ")] Running Terraform plan"
+          terraform plan -var-file="environments/${{ steps.env.outputs.environment }}.tfvars"
+          echo "[$(date -u +"%Y-%m-%dT%H:%M:%SZ")] Terraform plan completed"
+      
+      - name: Terraform Apply
+        working-directory: terraform
+        env:
+          TF_VAR_ssh_key_name: ${{ secrets.TF_SSH_KEY_NAME }}
+          TF_VAR_deploy_bucket: ${{ secrets.DEPLOY_BUCKET }}
+          TF_VAR_git_sha: ${{ github.sha }}
+        run: |
+          echo "[$(date -u +"%Y-%m-%dT%H:%M:%SZ")] Applying Terraform changes"
+          terraform apply -auto-approve -var-file="environments/${{ steps.env.outputs.environment }}.tfvars"
+          echo "[$(date -u +"%Y-%m-%dT%H:%M:%SZ")] Terraform apply completed"
+      

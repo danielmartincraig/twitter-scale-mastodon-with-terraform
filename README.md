@@ -71,3 +71,256 @@ Modules should be deployed in this order:
 - TrendsAndHashtags
 - Notifications
 - Search
+
+## Accessing the Cluster UI
+
+The Rama Conductor serves a web-based Cluster UI on port 8888. Rather than opening that port to the internet, use AWS SSM port forwarding to access it securely from your local machine — no open inbound rules or SSH key required.
+
+First, find the instance ID from the Terraform outputs or the AWS console:
+
+```bash
+cd terraform
+terraform output zookeeper_instance_ids
+```
+
+Then start the port forwarding session:
+
+```bash
+aws ssm start-session \
+  --target <instance-id> \
+  --document-name AWS-StartPortForwardingSession \
+  --parameters '{"portNumber":["8888"],"localPortNumber":["8888"]}'
+```
+
+Keep that terminal open and navigate to [http://localhost:8888](http://localhost:8888) in your browser.
+
+The [AWS Session Manager plugin](https://docs.aws.amazon.com/systems-manager/latest/userguide/session-manager-working-with-install-plugin.html) must be installed locally for this to work. The EC2 instance also needs the SSM agent running and an IAM instance profile with `AmazonSSMManagedInstanceCore` permissions, both of which are configured by this project's Terraform.
+
+## CI/CD and Deployment
+
+This project includes a complete CI/CD pipeline using GitHub Actions and Terraform for automated deployment to AWS EC2.
+
+### Documentation
+
+- [Secrets Configuration](docs/SECRETS_CONFIGURATION.md) - How to configure GitHub Actions secrets and AWS credentials
+- [Terraform Variables](docs/TERRAFORM_VARIABLES.md) - All configurable Terraform parameters and examples
+- [Terraform Documentation](terraform/README.md) - Infrastructure as code configuration and usage
+- [Deployment Scripts](scripts/README-deploy.md) - Application deployment and configuration scripts
+- [Deployment Runbook](docs/DEPLOYMENT_RUNBOOK.md) - Troubleshooting, health checks, and emergency procedures
+- [Rollback and Cleanup](docs/ROLLBACK_AND_CLEANUP.md) - How to rollback deployments and destroy infrastructure
+- [Error Handling](docs/ERROR_HANDLING.md) - Common errors and resolution strategies
+
+### Quick Start
+
+1. Configure required GitHub Actions secrets (see [Secrets Configuration](docs/SECRETS_CONFIGURATION.md))
+2. Configure Terraform variables for your environment (see [Terraform Variables](docs/TERRAFORM_VARIABLES.md))
+3. Push code to trigger the CI/CD pipeline
+4. Monitor deployment in the Actions tab
+5. Access your deployed instance at the API endpoint shown in deployment summary
+
+### Workflow Triggers
+
+The CI/CD pipeline automatically triggers based on Git events:
+
+#### Automatic Triggers
+
+- **All branches and pull requests**: Runs build and test jobs
+  - Compiles both backend and API modules
+  - Executes unit tests
+  - Packages JAR artifacts
+  - Does NOT deploy to any environment
+
+- **Main branch pushes**: Deploys to staging environment
+  - Runs full build and test pipeline
+  - Provisions/updates staging infrastructure via Terraform
+  - Deploys applications to staging EC2 instances
+  - Runs health checks
+
+- **Release tags** (v*.*.* or release-*): Deploys to production environment
+  - Runs full build and test pipeline
+  - Provisions/updates production infrastructure via Terraform
+  - Deploys applications to production EC2 instances
+  - Runs health checks
+  - Creates deployment summary
+
+#### Manual Triggers
+
+Use the GitHub Actions UI to manually trigger deployments:
+
+1. Go to **Actions** tab in GitHub
+2. Select **CI/CD Pipeline** workflow
+3. Click **Run workflow** button
+4. Choose options:
+   - **Branch**: Select branch to deploy from
+   - **Environment**: staging or production
+   - **Action**: deploy or rollback
+   - **Artifact Version** (for rollback): Git commit SHA of version to restore
+
+### Monitoring Workflow Execution
+
+#### Via GitHub Actions UI
+
+1. Navigate to the **Actions** tab in your repository
+2. Click on the workflow run you want to monitor
+3. View real-time logs for each job:
+   - **build-backend**: Backend module compilation
+   - **build-api**: API module compilation
+   - **test-backend**: Backend unit tests
+   - **test-api**: API unit tests
+   - **package-backend**: Backend JAR creation
+   - **package-api**: API JAR creation
+   - **deploy**: Infrastructure provisioning and application deployment
+
+4. Check job status indicators:
+   - 🟡 Yellow: Job in progress
+   - ✅ Green: Job succeeded
+   - ❌ Red: Job failed
+   - ⚪ Gray: Job queued or skipped
+
+#### Deployment Summary
+
+After successful deployment, view the deployment summary:
+
+1. Click on the **deploy** job
+2. Scroll to the bottom of the logs
+3. Find the **Deployment Summary** section containing:
+   - Deployed artifact versions (Git commit SHA)
+   - Zookeeper cluster node IPs
+   - API instance public IP
+   - API endpoint URL (http://IP:8080)
+   - Zookeeper connection string
+   - Health check results
+
+#### Downloading Artifacts
+
+To download built JAR files:
+
+1. Go to the workflow run summary page
+2. Scroll to **Artifacts** section at the bottom
+3. Download:
+   - `mastodon-backend-jar`: Backend module JAR
+   - `mastodon-api-jar`: API module JAR
+   - `deployment-summary`: Deployment details (if deployed)
+
+### Required GitHub Actions Secrets
+
+Configure these secrets in **Settings → Secrets and variables → Actions**:
+
+| Secret Name | Description | Example |
+|-------------|-------------|---------|
+| `AWS_ACCESS_KEY_ID` | AWS access key for Terraform | `AKIAIOSFODNN7EXAMPLE` |
+| `AWS_SECRET_ACCESS_KEY` | AWS secret key for Terraform | `wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY` |
+| `AWS_DEFAULT_REGION` | AWS region for deployment | `us-east-1` |
+| `TF_CLOUD_TOKEN` | Terraform Cloud API token | `xxxxxx.atlasv1.zzzzz` |
+| `TF_CLOUD_ORGANIZATION` | Terraform Cloud organization name | `my-company` |
+| `TF_CLOUD_WORKSPACE` | Terraform Cloud workspace name | `mastodon-deployment` |
+| `SSH_PRIVATE_KEY` | SSH private key for EC2 access | `-----BEGIN RSA PRIVATE KEY-----...` |
+
+See [Secrets Configuration](docs/SECRETS_CONFIGURATION.md) for detailed setup instructions.
+
+### Manual Deployment Process
+
+To manually deploy without triggering the workflow:
+
+1. **Build locally**:
+   ```bash
+   cd backend && mvn clean package
+   cd ../api && mvn clean package
+   ```
+
+2. **Provision infrastructure**:
+   ```bash
+   cd terraform
+   terraform init
+   terraform plan -var-file=environments/staging.tfvars
+   terraform apply -var-file=environments/staging.tfvars
+   ```
+
+3. **Deploy applications**:
+   ```bash
+   cd ../scripts
+   ./configure-zookeeper.sh <zk-ip-1> <zk-ip-2> <zk-ip-3>
+   ./deploy-application.sh
+   ```
+
+4. **Verify health**:
+   ```bash
+   ./health-check.sh
+   ```
+
+### Rollback Procedures
+
+#### Automated Rollback via Workflow
+
+1. Go to **Actions** → **CI/CD Pipeline** → **Run workflow**
+2. Select:
+   - **Action**: rollback
+   - **Environment**: staging or production
+   - **Artifact Version**: Git commit SHA to restore (e.g., `abc123def`)
+3. Click **Run workflow**
+4. Monitor rollback execution in Actions tab
+
+#### Manual Rollback
+
+1. **Identify target version**:
+   ```bash
+   # List recent deployments
+   git log --oneline -10
+   ```
+
+2. **Download artifacts** from the target workflow run in GitHub Actions
+
+3. **Deploy previous version**:
+   ```bash
+   cd scripts
+   ./deploy-application.sh --backend-jar=/path/to/old/backend.jar \
+                           --api-jar=/path/to/old/api.jar
+   ```
+
+4. **Verify health**:
+   ```bash
+   ./health-check.sh
+   ```
+
+#### Infrastructure Rollback
+
+If infrastructure changes caused issues:
+
+1. **Review Terraform state**:
+   ```bash
+   cd terraform
+   terraform show
+   ```
+
+2. **Revert to previous configuration**:
+   ```bash
+   git checkout <previous-commit>
+   terraform plan -var-file=environments/staging.tfvars
+   terraform apply -var-file=environments/staging.tfvars
+   ```
+
+3. **Or destroy and recreate**:
+   ```bash
+   terraform destroy -var-file=environments/staging.tfvars
+   # Fix configuration
+   terraform apply -var-file=environments/staging.tfvars
+   ```
+
+See [Rollback and Cleanup](docs/ROLLBACK_AND_CLEANUP.md) for detailed procedures.
+
+### Troubleshooting
+
+For common issues and solutions, see:
+- [Deployment Runbook](docs/DEPLOYMENT_RUNBOOK.md) - Troubleshooting guide
+- [Error Handling](docs/ERROR_HANDLING.md) - Error scenarios and resolutions
+
+Quick troubleshooting steps:
+
+1. **Build failures**: Check Maven logs in build job output
+2. **Test failures**: Download test reports from artifacts
+3. **Terraform errors**: Review terraform plan output and state
+4. **Deployment failures**: Check SSH connectivity and security groups
+5. **Health check failures**: Verify services are running on EC2 instances
+
+For detailed deployment procedures, troubleshooting, and rollback instructions, see the documentation links above.
+

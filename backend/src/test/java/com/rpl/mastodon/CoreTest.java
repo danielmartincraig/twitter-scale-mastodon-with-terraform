@@ -289,25 +289,9 @@ public class CoreTest {
       // since alice has 4 followers and fanoutLimit is 1,
       // her status should now be in the follower fanout pstate for further processing
 
-      // wait for another microbatch iteration
-      ipc.pauseMicrobatchTopology(coreModuleName, "fanout");
-      ipc.resumeMicrobatchTopology(coreModuleName, "fanout");
-
-      // wait for another microbatch iteration
-      ipc.pauseMicrobatchTopology(coreModuleName, "fanout");
-      ipc.resumeMicrobatchTopology(coreModuleName, "fanout");
-
-      // wait for another microbatch iteration
-      ipc.pauseMicrobatchTopology(coreModuleName, "fanout");
-      ipc.resumeMicrobatchTopology(coreModuleName, "fanout");
-
-      // wait for another microbatch iteration
-      ipc.pauseMicrobatchTopology(coreModuleName, "fanout");
-      ipc.resumeMicrobatchTopology(coreModuleName, "fanout");
-
       // now the fanout should be complete
-      assertNull(statusIdToLocalFollowerFanouts.selectOne(Path.key(aliceStatusResultWithId.statusId)));
-      assertNull(statusIdToRemoteFollowerFanout.selectOne(Path.key(aliceStatusResultWithId.statusId)));
+      attainCondition(() -> statusIdToLocalFollowerFanouts.selectOne(Path.key(aliceStatusResultWithId.statusId)) == null);
+      attainCondition(() -> statusIdToRemoteFollowerFanout.selectOne(Path.key(aliceStatusResultWithId.statusId)) == null);
 
       StatusPointer start = new StatusPointer(-1, -1);
 
@@ -435,16 +419,8 @@ public class CoreTest {
       // since #foo has 2 followers and fanoutLimit is 1,
       // david's status should now be in the hashtag follower fanout pstate for further processing
 
-      // wait for another microbatch iteration
-      ipc.pauseMicrobatchTopology(coreModuleName, "fanout");
-      ipc.resumeMicrobatchTopology(coreModuleName, "fanout");
-
-      // wait for another microbatch iteration
-      ipc.pauseMicrobatchTopology(coreModuleName, "fanout");
-      ipc.resumeMicrobatchTopology(coreModuleName, "fanout");
-
       // now the fanout should be complete
-      assertNull(hashtagFanoutToIndex.selectOne(Path.key(new HashtagFanout(davidId, statusDavidFoo.statusId, "foo"))));
+      attainCondition(() -> hashtagFanoutToIndex.selectOne(Path.key(new HashtagFanout(davidId, statusDavidFoo.statusId, "foo"))) == null);
 
       StatusPointer start = new StatusPointer(-1, -1);
 
@@ -470,6 +446,11 @@ public class CoreTest {
         assertEquals(statusDavidFoo.statusId, results.get(0).statusId);
       }
     }
+  }
+
+  private static Long firstOrNullStatusId(List<StatusResultWithId> l) {
+    if(l.size() == 0) return null;
+    else return l.get(0).statusId;
   }
 
   @Test
@@ -569,20 +550,12 @@ public class CoreTest {
       // since alice is in 2 lists and fanoutLimit is 1,
       // alice's status should now be in the list fanout pstate for further processing
 
-      // wait for another microbatch iteration
-      ipc.pauseMicrobatchTopology(coreModuleName, "fanout");
-      ipc.resumeMicrobatchTopology(coreModuleName, "fanout");
-
-      // wait for another microbatch iteration
-      ipc.pauseMicrobatchTopology(coreModuleName, "fanout");
-      ipc.resumeMicrobatchTopology(coreModuleName, "fanout");
-
       // now the fanout should be complete
-      assertNull(statusIdToListFanout.selectOne(Path.key(status11.statusId)));
+      attainCondition(() -> statusIdToListFanout.selectOne(Path.key(status11.statusId)) == null);
 
       // alice's status is in both lists
-      assertEquals(status11.statusId, getListTimeline.invoke(davidsListId, 0L, limit).results.get(0).statusId);
-      assertEquals(status11.statusId, getListTimeline.invoke(charliesListId, 0L, limit).results.get(0).statusId);
+      attainCondition(() -> ((Long) status11.statusId).equals(firstOrNullStatusId(getListTimeline.invoke(davidsListId, 0L, limit).results)));
+      attainCondition(() -> ((Long) status11.statusId).equals(firstOrNullStatusId(getListTimeline.invoke(charliesListId, 0L, limit).results)));
 
       // david removes the list
       listDepot.append(new RemoveAccountList(davidsListId, ts+=1));

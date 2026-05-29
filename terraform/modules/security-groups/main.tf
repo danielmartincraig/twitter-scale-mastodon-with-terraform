@@ -4,6 +4,7 @@
 # This module defines security groups for:
 # - Zookeeper cluster (ports 2181, 2888, 3888)
 # - API instances (port 8080)
+# - Rama inter-node communication (ports 3004, 3005)
 # - SSH access (port 22, restricted to specific CIDRs)
 
 # Zookeeper Security Group
@@ -65,6 +66,22 @@ resource "aws_security_group" "api" {
     to_port     = 8080
     protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  ingress {
+    description = "Rama worker port"
+    from_port   = 3004
+    to_port     = 3004
+    protocol    = "tcp"
+    self        = true
+  }
+
+  ingress {
+    description = "Rama client port"
+    from_port   = 3005
+    to_port     = 3005
+    protocol    = "tcp"
+    self        = true
   }
 
   egress {

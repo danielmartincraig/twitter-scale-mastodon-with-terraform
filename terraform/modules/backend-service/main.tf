@@ -39,6 +39,7 @@ resource "aws_instance" "zookeeper" {
     aws_region                      = var.aws_region
     rama_conductor_service_unit     = file("${path.root}/systemd/rama-conductor.service")
     rama_supervisor_service_unit    = file("${path.root}/systemd/rama-supervisor.service")
+    mastodon_api_service_unit       = file("${path.root}/systemd/mastodon-api.service")
     git_sha                         = var.git_sha
   })
 

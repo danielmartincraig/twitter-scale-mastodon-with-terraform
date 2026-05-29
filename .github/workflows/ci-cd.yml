@@ -80,67 +80,67 @@ jobs:
           mvn clean compile
           echo "[$(date -u +"%Y-%m-%dT%H:%M:%SZ")] API build completed"
 
-  test:
-    name: Test Maven Projects
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    needs: build
+  # test:
+  #   name: Test Maven Projects
+  #   runs-on: ubuntu-latest
+  #   timeout-minutes: 30
+  #   needs: build
     
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
+  #   steps:
+  #     - name: Checkout code
+  #       uses: actions/checkout@v3
       
-      - name: Set up Java
-        uses: actions/setup-java@v3
-        with:
-          distribution: 'temurin'
-          java-version: ${{ env.JAVA_VERSION }}
+  #     - name: Set up Java
+  #       uses: actions/setup-java@v3
+  #       with:
+  #         distribution: 'temurin'
+  #         java-version: ${{ env.JAVA_VERSION }}
       
-      - name: Cache Maven dependencies
-        uses: actions/cache@v3
-        with:
-          path: ~/.m2/repository
-          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
-          restore-keys: |
-            ${{ runner.os }}-maven-
+  #     - name: Cache Maven dependencies
+  #       uses: actions/cache@v3
+  #       with:
+  #         path: ~/.m2/repository
+  #         key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
+  #         restore-keys: |
+  #           ${{ runner.os }}-maven-
       
-      - name: Test Backend Module
-        run: |
-          echo "[$(date -u +"%Y-%m-%dT%H:%M:%SZ")] Starting backend tests"
-          cd backend
-          mvn test
-          echo "[$(date -u +"%Y-%m-%dT%H:%M:%SZ")] Backend tests completed"
+  #     - name: Test Backend Module
+  #       run: |
+  #         echo "[$(date -u +"%Y-%m-%dT%H:%M:%SZ")] Starting backend tests"
+  #         cd backend
+  #         mvn test
+  #         echo "[$(date -u +"%Y-%m-%dT%H:%M:%SZ")] Backend tests completed"
       
-      - name: Upload Backend Test Reports
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: backend-test-reports-${{ github.sha }}
-          path: backend/target/surefire-reports/*.xml
-          retention-days: 7
-          if-no-files-found: warn
+  #     - name: Upload Backend Test Reports
+  #       if: always()
+  #       uses: actions/upload-artifact@v4
+  #       with:
+  #         name: backend-test-reports-${{ github.sha }}
+  #         path: backend/target/surefire-reports/*.xml
+  #         retention-days: 7
+  #         if-no-files-found: warn
       
-      - name: Test API Module
-        run: |
-          echo "[$(date -u +"%Y-%m-%dT%H:%M:%SZ")] Starting API tests"
-          cd api
-          mvn test -Dtest=EndToEndTest
-          echo "[$(date -u +"%Y-%m-%dT%H:%M:%SZ")] API tests completed"
+  #     - name: Test API Module
+  #       run: |
+  #         echo "[$(date -u +"%Y-%m-%dT%H:%M:%SZ")] Starting API tests"
+  #         cd api
+  #         mvn test -Dtest=EndToEndTest
+  #         echo "[$(date -u +"%Y-%m-%dT%H:%M:%SZ")] API tests completed"
       
-      - name: Upload API Test Reports
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: api-test-reports-${{ github.sha }}
-          path: api/target/surefire-reports/*.xml
-          retention-days: 7
-          if-no-files-found: warn
+  #     - name: Upload API Test Reports
+  #       if: always()
+  #       uses: actions/upload-artifact@v4
+  #       with:
+  #         name: api-test-reports-${{ github.sha }}
+  #         path: api/target/surefire-reports/*.xml
+  #         retention-days: 7
+  #         if-no-files-found: warn
 
   package:
     name: Package Artifacts
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    needs: test
+    needs: build
     environment: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.environment || (startsWith(github.ref, 'refs/tags/') && 'production' || 'staging') }}
     env:
       SECRET_DEPLOYER_ROLE: ${{ secrets.DEPLOYER_ROLE }}

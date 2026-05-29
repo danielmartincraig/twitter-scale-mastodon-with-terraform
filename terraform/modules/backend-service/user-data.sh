@@ -258,7 +258,13 @@ DEPLOY_ARGS="--action launch --jar $BACKEND_JAR --tasks 16 --threads 4 --workers
 wait_for_module() {
   local module=$1
   echo "Waiting for module $module to reach RUNNING status..."
-  until /opt/rama/rama moduleStatus "$module" 2>/dev/null | grep -q '"moduleState":"RUNNING"'; do
+  while true; do
+    # Run moduleStatus in a subshell so a non-zero exit (module not yet
+    # registered) does not trigger set -e and abort the bootstrap script.
+    status=$(/opt/rama/rama moduleStatus "$module" 2>/dev/null || true)
+    if echo "$status" | grep -q '"moduleState":"RUNNING"'; then
+      break
+    fi
     sleep 10
   done
   echo "Module $module is running."
@@ -289,3 +295,27 @@ echo "Deploying Search module..."
 wait_for_module com.rpl.mastodon.modules.Search
 
 echo "All Mastodon modules deployed successfully." >> /var/log/zookeeper/bootstrap.log
+
+# Verify all modules are RUNNING before starting the API, since the API
+# connects to all modules on startup and will crash if any are not yet alive.
+wait_for_module com.rpl.mastodon.modules.Relationships
+wait_for_module com.rpl.mastodon.modules.Core
+wait_for_module com.rpl.mastodon.modules.GlobalTimelines
+wait_for_module com.rpl.mastodon.modules.TrendsAndHashtags
+wait_for_module com.rpl.mastodon.modules.Notifications
+wait_for_module com.rpl.mastodon.modules.Search
+echo "All modules confirmed RUNNING, starting API." >> /var/log/zookeeper/bootstrap.log
+
+# Install the Mastodon API systemd service
+cat > /etc/systemd/system/mastodon-api.service << 'EOF'
+${mastodon_api_service_unit}
+EOF
+
+# Create API log directory
+mkdir -p /opt/mastodon-api/logs
+
+systemctl daemon-reload
+systemctl enable mastodon-api
+systemctl start mastodon-api
+
+echo "Mastodon API service started." >> /var/log/zookeeper/bootstrap.log

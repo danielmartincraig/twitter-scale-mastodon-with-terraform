@@ -2,7 +2,7 @@
 
 environment                = "staging"
 aws_region                 = "us-east-1"
-backend_service_instance_type    = "t4g.xlarge"
+backend_service_instance_type    = "t4g.2xlarge"
 instance_count            = 1
 vpc_cidr                   = "10.0.0.0/16"
 enable_detailed_monitoring = false

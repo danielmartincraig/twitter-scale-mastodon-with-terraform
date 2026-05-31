@@ -30,17 +30,11 @@ resource "aws_instance" "zookeeper" {
   }
 
   user_data = templatefile("${path.module}/user-data.sh", {
-    server_id                       = count.index + 1
-    zookeeper_service_unit          = file("${path.root}/systemd/zookeeper.service")
-    zookeeper_config                = file("${path.root}/zoo.cfg")
-    rama_config                     = file("${path.root}/rama.yaml")
-    deploy_bucket                   = var.deploy_bucket
-    rama_s3_key                     = var.rama_s3_key
-    aws_region                      = var.aws_region
-    rama_conductor_service_unit     = file("${path.root}/systemd/rama-conductor.service")
-    rama_supervisor_service_unit    = file("${path.root}/systemd/rama-supervisor.service")
-    mastodon_api_service_unit       = file("${path.root}/systemd/mastodon-api.service")
-    git_sha                         = var.git_sha
+    server_id     = count.index + 1
+    deploy_bucket = var.deploy_bucket
+    rama_s3_key   = var.rama_s3_key
+    aws_region    = var.aws_region
+    git_sha       = var.git_sha
   })
 
   tags = {

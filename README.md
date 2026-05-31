@@ -215,6 +215,7 @@ Configure these secrets in **Settings → Secrets and variables → Actions**:
 | `TF_CLOUD_ORGANIZATION` | Terraform Cloud organization name | `my-company` |
 | `TF_CLOUD_WORKSPACE` | Terraform Cloud workspace name | `mastodon-deployment` |
 | `SSH_PRIVATE_KEY` | SSH private key for EC2 access | `-----BEGIN RSA PRIVATE KEY-----...` |
+| `MASTODON_DOMAIN` | Public domain name for the Mastodon instance | `mastodon.example.com` |
 
 See [Secrets Configuration](docs/SECRETS_CONFIGURATION.md) for detailed setup instructions.
 

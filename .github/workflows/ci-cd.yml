@@ -227,6 +227,34 @@ jobs:
           aws s3 cp api/target/mastodonapi-*.jar \
             s3://${{ secrets.DEPLOY_BUCKET }}/jars/api/${{ github.sha }}/mastodonapi.jar
 
+      - name: Upload config files to S3
+        env:
+          MASTODON_DOMAIN: ${{ secrets.MASTODON_DOMAIN }}
+        run: |
+          if [ -z "$MASTODON_DOMAIN" ]; then
+            echo "ERROR: MASTODON_DOMAIN secret is not set. Add it in Settings → Secrets → Actions."
+            exit 1
+          fi
+
+          PREFIX="s3://${{ secrets.DEPLOY_BUCKET }}/config/${{ github.sha }}"
+
+          # Static config files
+          aws s3 cp terraform/zoo.cfg                    "$PREFIX/zoo.cfg"
+          aws s3 cp terraform/rama.yaml                  "$PREFIX/rama.yaml"
+          aws s3 cp terraform/systemd/zookeeper.service  "$PREFIX/zookeeper.service"
+          aws s3 cp terraform/systemd/rama-conductor.service  "$PREFIX/rama-conductor.service"
+          aws s3 cp terraform/systemd/rama-supervisor.service "$PREFIX/rama-supervisor.service"
+          aws s3 cp terraform/systemd/mastodon-api.service    "$PREFIX/mastodon-api.service"
+
+          # Nginx config — substitute domain before uploading.
+          # envsubst replaces $DOMAIN in the template; we export it from the secret.
+          # Only $DOMAIN is substituted — nginx's own $variables are left untouched
+          # by passing the explicit variable list to envsubst.
+          export DOMAIN="$MASTODON_DOMAIN"
+          export NGINX_CATCHALL="${{ secrets.NGINX_CATCHALL }}"
+          envsubst '$DOMAIN $NGINX_CATCHALL' < terraform/nginx/soapbox.conf \
+            | aws s3 cp - "$PREFIX/nginx-soapbox.conf"
+
   deploy:
     name: Deploy to AWS
     runs-on: ubuntu-latest
